@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "tranZfort | Admin Dashboard",
-  description: "Internal management portal for tranZfort Logistics",
+  title: "tranZfort | The Future of Truck Load Discovery",
+  description: "Connect directly with suppliers and truckers across India. No commissions, no intermediaries, just pure logistics.",
 };
 
 export default function RootLayout({

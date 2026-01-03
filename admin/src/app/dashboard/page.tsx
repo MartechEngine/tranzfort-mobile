@@ -17,9 +17,10 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
     const fetchStats = async () => {
       try {
-        const response = await fetch('http://localhost:3000/admin/stats', {
+        const response = await fetch(`${apiBaseUrl}/admin/stats`, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
           }

@@ -20,25 +20,44 @@ jobs:
         with:
           node-version: 20.10.0
 
-      # --- CHANGED SECTION STARTS HERE ---
-      # We enter the 'admin' folder to build the app
-      - name: Install and Build
-        working-directory: ./admin  # <--- THIS TELLS IT TO GO INTO THE ADMIN FOLDER
+      # 1. Build Landing Page (Root)
+      - name: Install and Build Landing
+        working-directory: ./landing
         run: |
           npm install
           npm run build
-
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
 
+      # 2. Build Admin App (/admin)
+      - name: Install and Build Admin
+        working-directory: ./admin
+        run: |
+          npm install
+          npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+
+      # 3. Prepare deployment directory
+      - name: Prepare Deployment Directory
+        run: |
+          mkdir deploy-dist
+          cp -r landing/out/* deploy-dist/
+          mkdir -p deploy-dist/admin
+          cp -r admin/out/* deploy-dist/admin/
+
+      # 4. Upload to Hostinger (FTP)
       - name: FTP Deploy
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: ./admin/out/   # Next.js static export output
+          local-dir: ./deploy-dist/
           server-dir: ./
           protocol: ftp
           dangerous-clean-slate: true

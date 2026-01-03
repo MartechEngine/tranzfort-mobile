@@ -1,9 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Export a static site (for FTP hosting)
   output: "export",
-  basePath: "/admin",
+  images: {
+    unoptimized: true,
+  },
+  reactCompiler: true,
 };
 
 export default nextConfig;
