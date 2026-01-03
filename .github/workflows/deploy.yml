@@ -28,16 +28,16 @@ jobs:
           npm run build
         env:
           # These inject your Supabase keys into the React build
-          VITE_SUPABASE_URL: ${{ https://nybapdydsnsnokeoedtm.supabase.co }}
-          VITE_SUPABASE_ANON_KEY: ${{ sb_publishable_OsWZVdLnxN3gbtraK-dc-A_pAccKbIB }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
       # 4. Upload to Hostinger (FTP)
       - name: FTP Deploy
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
-          server: ${{ ftp://82.25.106.30 }}
-          username: ${{ u989459666.deployer }}
-          password: ${{ Tranzfort2025!Deploy }}
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./dist/      # The folder Vite creates
           server-dir: ./          # Uploads directly to public_html via the user you created
           protocol: ftp
