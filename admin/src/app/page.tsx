@@ -10,7 +10,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? '';
 
   const onLogin = async () => {
     setLoading(true);
@@ -27,6 +27,8 @@ export default function Home() {
       }
       const data = await res.json();
       localStorage.setItem('admin_token', data.token);
+      // Also store user info for display
+      localStorage.setItem('admin_user', JSON.stringify(data.user));
       router.push('/dashboard');
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Unknown error');

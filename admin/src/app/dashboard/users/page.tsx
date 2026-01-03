@@ -7,11 +7,12 @@ export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? '';
 
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const response = await fetch('http://localhost:3000/users', {
+        const response = await fetch(`${apiBaseUrl}/users`, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
           }
@@ -35,7 +36,7 @@ export default function UsersPage() {
 
   const handleUpdateRole = async (userId: string, newRole: string) => {
     try {
-      const response = await fetch(`http://localhost:3000/users/${userId}`, {
+      const response = await fetch(`${apiBaseUrl}/users/${userId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',

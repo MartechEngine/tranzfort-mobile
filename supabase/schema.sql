@@ -1,4 +1,5 @@
--- tranZfort Database Schema
+-- Enable PostGIS extension
+CREATE EXTENSION IF NOT EXISTS postgis;
 
 -- 1. Users Table
 CREATE TABLE IF NOT EXISTS public.users (
@@ -33,12 +34,26 @@ CREATE TABLE IF NOT EXISTS public.trucker_profiles (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 4. Loads Table
+-- 4. Trucks Table (for truckers with multiple vehicles)
+CREATE TABLE IF NOT EXISTS public.trucks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    trucker_id UUID NOT NULL REFERENCES public.trucker_profiles(id) ON DELETE CASCADE,
+    rc_number TEXT UNIQUE NOT NULL,
+    truck_type TEXT NOT NULL,
+    wheel_count INTEGER NOT NULL,
+    capacity_mt NUMERIC NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 5. Loads Table
 CREATE TABLE IF NOT EXISTS public.loads (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     supplier_id UUID NOT NULL REFERENCES public.supplier_profiles(id) ON DELETE CASCADE,
-    pickup_location JSONB NOT NULL, -- {city, coordinates, address}
-    drop_location JSONB NOT NULL, -- {city, coordinates, address}
+    pickup_location JSONB NOT NULL, -- {city, coordinates: {lat, lng}, address}
+    drop_location JSONB NOT NULL, -- {city, coordinates: {lat, lng}, address}
+    pickup_point GEOGRAPHY(POINT) GENERATED ALWAYS AS (ST_SetSRID(ST_MakePoint((pickup_location->'coordinates'->>'lng')::float, (pickup_location->'coordinates'->>'lat')::float), 4324)::GEOGRAPHY) STORED,
+    drop_point GEOGRAPHY(POINT) GENERATED ALWAYS AS (ST_SetSRID(ST_MakePoint((drop_location->'coordinates'->>'lng')::float, (drop_location->'coordinates'->>'lat')::float), 4324)::GEOGRAPHY) STORED,
     material_type TEXT NOT NULL,
     weight_mt NUMERIC NOT NULL,
     required_truck_type TEXT,
@@ -50,7 +65,31 @@ CREATE TABLE IF NOT EXISTS public.loads (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 5. Chats Table
+CREATE INDEX IF NOT EXISTS loads_pickup_point_idx ON public.loads USING GIST (pickup_point);
+CREATE INDEX IF NOT EXISTS loads_drop_point_idx ON public.loads USING GIST (drop_point);
+
+-- RPC Function for radius search
+CREATE OR REPLACE FUNCTION get_loads_by_radius(
+    p_lat DOUBLE PRECISION,
+    p_lng DOUBLE PRECISION,
+    p_radius_meters DOUBLE PRECISION
+)
+RETURNS SETOF loads AS $$
+BEGIN
+    RETURN QUERY
+    SELECT *
+    FROM loads
+    WHERE ST_DWithin(
+        pickup_point,
+        ST_SetSRID(ST_MakePoint(p_lng, p_lat), 4326)::geography,
+        p_radius_meters
+    )
+    AND status = 'ACTIVE'
+    ORDER BY created_at DESC;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 6. Chats Table
 CREATE TABLE IF NOT EXISTS public.chats (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     load_id UUID NOT NULL REFERENCES public.loads(id) ON DELETE CASCADE,
@@ -59,7 +98,7 @@ CREATE TABLE IF NOT EXISTS public.chats (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 6. Chat Messages Table
+-- 7. Chat Messages Table
 CREATE TABLE IF NOT EXISTS public.chat_messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     chat_id UUID NOT NULL REFERENCES public.chats(id) ON DELETE CASCADE,
@@ -68,14 +107,73 @@ CREATE TABLE IF NOT EXISTS public.chat_messages (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 7. Verifications Table
+-- 8. Verifications Table
 CREATE TABLE IF NOT EXISTS public.verifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
     document_url TEXT NOT NULL,
-    document_type TEXT NOT NULL,
+    document_type TEXT NOT NULL, -- 'GST', 'RC', 'DL', 'VISITING_CARD'
     status TEXT DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')),
     admin_notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 9. Ads Table
+CREATE TABLE IF NOT EXISTS public.ads (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title TEXT NOT NULL,
+    image_url TEXT NOT NULL,
+    target_url TEXT,
+    placement TEXT NOT NULL, -- 'HOME_BANNER', 'LOAD_LIST_INLINE', 'PROFILE'
+    is_active BOOLEAN DEFAULT true,
+    start_date TIMESTAMP WITH TIME ZONE,
+    end_date TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 10. Subscriptions Table
+CREATE TABLE IF NOT EXISTS public.subscriptions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    plan_type TEXT NOT NULL CHECK (plan_type IN ('FREE', 'PREMIUM')),
+    status TEXT DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'EXPIRED', 'CANCELLED')),
+    start_date TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    end_date TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 11. Reports Table
+CREATE TABLE IF NOT EXISTS public.reports (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    reporter_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    target_user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+    target_load_id UUID REFERENCES public.loads(id) ON DELETE CASCADE,
+    reason TEXT NOT NULL,
+    details TEXT,
+    status TEXT DEFAULT 'OPEN' CHECK (status IN ('OPEN', 'INVESTIGATING', 'RESOLVED', 'DISMISSED')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 12. Load Filters / Saved Routes
+CREATE TABLE IF NOT EXISTS public.load_filters (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    from_city TEXT,
+    to_city TEXT,
+    truck_type TEXT,
+    is_alert_enabled BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 13. Audit Logs
+CREATE TABLE IF NOT EXISTS public.audit_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    admin_id UUID NOT NULL REFERENCES public.users(id),
+    action TEXT NOT NULL,
+    target_type TEXT NOT NULL, -- 'USER', 'LOAD', 'VERIFICATION', 'AD'
+    target_id UUID NOT NULL,
+    old_value JSONB,
+    new_value JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -83,3 +181,17 @@ CREATE TABLE IF NOT EXISTS public.verifications (
 ALTER PUBLICATION supabase_realtime ADD TABLE chat_messages;
 ALTER PUBLICATION supabase_realtime ADD TABLE loads;
 ALTER PUBLICATION supabase_realtime ADD TABLE chats;
+ALTER PUBLICATION supabase_realtime ADD TABLE verifications;
+ALTER PUBLICATION supabase_realtime ADD TABLE notifications; -- (Will create this table if missing)
+
+-- 14. Notifications Table
+CREATE TABLE IF NOT EXISTS public.notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    data JSONB,
+    is_read BOOLEAN DEFAULT false,
+    fcm_status TEXT DEFAULT 'PENDING' CHECK (fcm_status IN ('PENDING', 'SENT', 'FAILED')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);

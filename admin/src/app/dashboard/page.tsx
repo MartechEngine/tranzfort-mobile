@@ -17,7 +17,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? '';
     const fetchStats = async () => {
       try {
         const response = await fetch(`${apiBaseUrl}/admin/stats`, {

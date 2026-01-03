@@ -9,12 +9,13 @@ export default function VerificationsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const adminToken = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? '';
 
   const fetchVerifications = async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch('http://localhost:3000/admin/verifications', {
+      const response = await fetch(`${apiBaseUrl}/admin/verifications`, {
         headers: {
           Authorization: `Bearer ${adminToken ?? ''}`,
         },
@@ -35,7 +36,7 @@ export default function VerificationsPage() {
   }, []);
 
   const approve = async (id: string) => {
-    await fetch(`http://localhost:3000/admin/verifications/${id}/approve`, {
+    await fetch(`${apiBaseUrl}/admin/verifications/${id}/approve`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${adminToken ?? ''}`,
@@ -46,7 +47,7 @@ export default function VerificationsPage() {
 
   const reject = async (id: string) => {
     const notes = window.prompt('Reject notes (optional):') ?? '';
-    await fetch(`http://localhost:3000/admin/verifications/${id}/reject`, {
+    await fetch(`${apiBaseUrl}/admin/verifications/${id}/reject`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

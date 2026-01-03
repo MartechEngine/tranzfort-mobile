@@ -9,12 +9,13 @@ export default function LoadsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const adminToken = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? '';
 
   const fetchLoads = async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch('http://localhost:3000/admin/loads', {
+      const response = await fetch(`${apiBaseUrl}/admin/loads`, {
         headers: {
           Authorization: `Bearer ${adminToken ?? ''}`,
         },
@@ -37,7 +38,7 @@ export default function LoadsPage() {
   const deleteLoad = async (id: string) => {
     const ok = window.confirm('Delete this load?');
     if (!ok) return;
-    await fetch(`http://localhost:3000/admin/loads/${id}`, {
+    await fetch(`${apiBaseUrl}/admin/loads/${id}`, {
       method: 'DELETE',
       headers: {
         Authorization: `Bearer ${adminToken ?? ''}`,

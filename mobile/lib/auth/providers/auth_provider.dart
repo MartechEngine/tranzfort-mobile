@@ -55,7 +55,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         'otp': otp,
       });
       
-      final token = response.data['session']['access_token'];
+      final token = response.data['token'];
       await _storage.write(key: 'auth_token', value: token);
       
       state = state.copyWith(status: AuthStatus.authenticated, token: token);

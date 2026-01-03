@@ -1,20 +1,18 @@
 import { Request, Response, NextFunction } from 'express';
 import { supabase, isSupabaseConfigured } from '../config/supabase.js';
+import { verifyToken, TokenPayload } from '../services/tokenService.js';
 
-// Extend Express Request type to include user
+// Extend Express Request type to include user and role
 declare global {
   namespace Express {
     interface Request {
-      user?: any;
+      user?: TokenPayload;
+      supabaseUser?: any; // Original Supabase user if needed
     }
   }
 }
 
 export const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
-  if (!isSupabaseConfigured) {
-    return res.status(503).json({ error: 'Supabase is not configured on this server' });
-  }
-
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -24,59 +22,35 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
   const token = authHeader.split(' ')[1];
 
   try {
-    const { data: { user }, error } = await supabase.auth.getUser(token);
-
-    if (error || !user) {
-      return res.status(401).json({ error: 'Invalid or expired token' });
-    }
-
-    req.user = user;
+    const payload = verifyToken(token);
+    req.user = payload;
     next();
   } catch (error) {
-    res.status(401).json({ error: 'Unauthorized' });
+    res.status(401).json({ error: 'Invalid or expired token' });
   }
 };
 
-export const adminOnly = async (req: Request, res: Response, next: NextFunction) => {
-  const localMode = (process.env.LOCAL_ADMIN_MODE ?? 'false').toLowerCase() === 'true';
-  if (localMode) {
-    if (req.admin?.role === 'ADMIN') {
-      return next();
+export const roleGuard = (allowedRoles: ('ADMIN' | 'SUPPLIER' | 'TRUCKER')[]) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Unauthorized' });
     }
-    return res.status(401).json({ error: 'Unauthorized (admin token required)' });
-  }
 
-  if (!isSupabaseConfigured) {
-    return res.status(503).json({ error: 'Supabase is not configured on this server' });
-  }
-
-  const userId = req.user?.id;
-
-  if (!userId) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  try {
-    const { data: user, error } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', userId)
-      .single();
-
-    if (error || !user || user.role !== 'ADMIN') {
-      return res.status(403).json({ error: 'Forbidden: Admin access required' });
+    if (!allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({ error: `Forbidden: Requires one of roles: ${allowedRoles.join(', ')}` });
     }
 
     next();
-  } catch (error) {
-    res.status(500).json({ error: 'Internal server error' });
-  }
+  };
 };
+
+export const adminOnly = roleGuard(['ADMIN']);
 
 export const adminGuard = async (req: Request, res: Response, next: NextFunction) => {
   const localMode = (process.env.LOCAL_ADMIN_MODE ?? 'false').toLowerCase() === 'true';
   if (localMode) {
-    return adminOnly(req, res, next);
+    // Legacy support for local mode if needed, otherwise rely on custom JWT
+    return next();
   }
 
   return authMiddleware(req, res, () => adminOnly(req, res, next));
