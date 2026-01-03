@@ -3,42 +3,41 @@ name: Deploy to Hostinger
 on:
   push:
     branches:
-      - main  # Set this to your default branch name (main or master)
+      - main
 
 jobs:
   deploy:
     name: Build and Deploy
+
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Download your code
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 2. Install Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
 
-      # 3. Install Dependencies and Build
+      # --- CHANGED SECTION STARTS HERE ---
+      # We enter the 'admin' folder to build the app
       - name: Install and Build
+        working-directory: ./admin  # <--- THIS TELLS IT TO GO INTO THE ADMIN FOLDER
         run: |
           npm install
           npm run build
         env:
-          # These inject your Supabase keys into the React build
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
-      # 4. Upload to Hostinger (FTP)
       - name: FTP Deploy
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: ./dist/      # The folder Vite creates
-          server-dir: ./          # Uploads directly to public_html via the user you created
+          local-dir: ./admin/dist/  # <--- UPDATED: Picks up the build from inside admin/dist
+          server-dir: ./
           protocol: ftp
-          dangerous-clean-slate: true # Warning: Deletes old files in that folder to keep it clean
+          dangerous-clean-slate: true
