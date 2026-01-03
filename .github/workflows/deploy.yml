@@ -27,6 +27,7 @@ jobs:
         run: |
           npm install
           npm run build
+
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
@@ -37,7 +38,7 @@ jobs:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: ./admin/dist/  # <--- UPDATED: Picks up the build from inside admin/dist
+          local-dir: ./admin/out/   # Next.js static export output
           server-dir: ./
           protocol: ftp
           dangerous-clean-slate: true
