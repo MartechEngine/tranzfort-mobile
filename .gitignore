@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+.yarn/cache/
+
+# Build artifacts
+dist/
+build/
+.cache/
+tmp/
+temp/
+.eslintcache
+
+# Environment files
+.env
+.env.*
+*.env
+*.local
+*.development
+*.production
+
+# Logs
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# Editor/OS
+.vscode/
+.idea/
+.DS_Store
+
+# Mobile/Expo
+.expo/
+.expo-shared/
+ios/build/
+android/app/build/
+
+# Supabase local state
+.supabase/
+
+# Docs
+/docs/

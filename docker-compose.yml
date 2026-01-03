@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./backend/.env
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    restart: always
+
+  admin:
+    build: ./admin
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./admin:/app
+      - /app/node_modules
+      - /app/.next
+    env_file:
+      - ./admin/.env.local
+    environment:
+      - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true
+    command: ["npm", "run", "dev", "--", "-p", "3000", "-H", "0.0.0.0"]
+    restart: always
