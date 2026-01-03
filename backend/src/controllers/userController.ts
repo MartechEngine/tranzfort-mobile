@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { supabase } from '../config/supabase.js';
 
 export const getProfile = async (req: Request, res: Response) => {
-  const userId = req.user?.id; // Assuming auth middleware attaches user to req
+  const userId = req.user?.id;
 
   if (!userId) {
     return res.status(401).json({ error: 'Unauthorized' });

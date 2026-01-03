@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 const JWT_SECRET = process.env.SUPABASE_JWT_SECRET || 'your-fallback-secret-for-dev-only';
 
 export interface TokenPayload {
-  uid: string;
+  id: string;
   role: 'ADMIN' | 'SUPPLIER' | 'TRUCKER';
   phone: string;
 }

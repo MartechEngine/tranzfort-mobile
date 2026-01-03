@@ -68,7 +68,8 @@ export const initiateChat = async (req: Request, res: Response) => {
 
 export const sendMessage = async (req: Request, res: Response) => {
   const userId = req.user?.id;
-  const { chat_id, message } = req.body;
+  const { id: chat_id } = req.params;
+  const { message } = req.body;
 
   if (!userId || !chat_id || !message) {
     return res.status(400).json({ error: 'Missing required fields' });

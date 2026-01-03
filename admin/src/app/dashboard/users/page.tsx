@@ -32,7 +32,7 @@ export default function UsersPage() {
     };
 
     fetchUsers();
-  }, []);
+  }, [apiBaseUrl]);
 
   const handleUpdateRole = async (userId: string, newRole: string) => {
     try {

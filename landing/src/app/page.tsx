@@ -27,10 +27,18 @@ export default function Home() {
         </p>
         
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
-          <Link href="#" className="w-full sm:w-auto px-8 py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-200 text-center">
+          <Link 
+            href="https://play.google.com/store/apps/details?id=com.tranzfort.app" 
+            target="_blank"
+            className="w-full sm:w-auto px-8 py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-200 text-center"
+          >
             Download Android App
           </Link>
-          <Link href="#" className="w-full sm:w-auto px-8 py-4 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition shadow-lg shadow-slate-200 text-center">
+          <Link 
+            href="https://apps.apple.com/app/tranzfort/id123456789" 
+            target="_blank"
+            className="w-full sm:w-auto px-8 py-4 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition shadow-lg shadow-slate-200 text-center"
+          >
             Download iOS App
           </Link>
         </div>

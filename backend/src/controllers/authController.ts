@@ -60,7 +60,7 @@ export const verifyOtp = async (req: Request, res: Response) => {
     }
 
     const token = signToken({
-      uid: data.user.id,
+      id: data.user.id,
       role,
       phone: data.user.phone || `+91${phone}`
     });

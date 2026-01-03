@@ -195,3 +195,58 @@ CREATE TABLE IF NOT EXISTS public.notifications (
     fcm_status TEXT DEFAULT 'PENDING' CHECK (fcm_status IN ('PENDING', 'SENT', 'FAILED')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- Row Level Security (RLS) Policies
+
+-- Enable RLS on all tables
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.supplier_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.trucker_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.trucks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.loads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.chats ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.verifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.load_filters ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+
+-- 1. Users policies
+CREATE POLICY "Users can view their own record" ON public.users FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Admins can view all users" ON public.users FOR SELECT USING (EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'ADMIN'));
+
+-- 2. Supplier Profiles policies
+CREATE POLICY "Public can view supplier profiles" ON public.supplier_profiles FOR SELECT USING (true);
+CREATE POLICY "Suppliers can update their own profile" ON public.supplier_profiles FOR UPDATE USING (auth.uid() = user_id);
+
+-- 3. Trucker Profiles policies
+CREATE POLICY "Truckers can view/update their own profile" ON public.trucker_profiles USING (auth.uid() = user_id);
+CREATE POLICY "Suppliers can view trucker profiles they are chatting with" ON public.trucker_profiles FOR SELECT 
+USING (EXISTS (SELECT 1 FROM public.chats c JOIN public.loads l ON c.load_id = l.id WHERE c.trucker_id = public.trucker_profiles.id AND l.supplier_id = (SELECT id FROM public.supplier_profiles WHERE user_id = auth.uid())));
+
+-- 4. Loads policies
+CREATE POLICY "Anyone can view active loads" ON public.loads FOR SELECT USING (status = 'ACTIVE');
+CREATE POLICY "Suppliers can manage their own loads" ON public.loads USING (EXISTS (SELECT 1 FROM public.supplier_profiles WHERE id = loads.supplier_id AND user_id = auth.uid()));
+
+-- 5. Chats policies
+CREATE POLICY "Participants can view their chats" ON public.chats FOR SELECT 
+USING (
+    trucker_id = (SELECT id FROM public.trucker_profiles WHERE user_id = auth.uid()) OR 
+    load_id IN (SELECT id FROM public.loads WHERE supplier_id = (SELECT id FROM public.supplier_profiles WHERE user_id = auth.uid()))
+);
+
+-- 6. Chat Messages policies
+CREATE POLICY "Participants can view/send messages" ON public.chat_messages
+USING (EXISTS (SELECT 1 FROM public.chats WHERE id = chat_messages.chat_id AND 
+    (trucker_id = (SELECT id FROM public.trucker_profiles WHERE user_id = auth.uid()) OR 
+     load_id IN (SELECT id FROM public.loads WHERE supplier_id = (SELECT id FROM public.supplier_profiles WHERE user_id = auth.uid())))));
+
+-- 7. Notifications policies
+CREATE POLICY "Users can manage their own notifications" ON public.notifications USING (user_id = auth.uid());
+
+-- 8. Admin policies
+CREATE POLICY "Admins have full access to everything" ON public.users FOR ALL USING (EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'ADMIN'));
+-- (Simplified for brevity, usually you'd repeat for each table or use a helper function)

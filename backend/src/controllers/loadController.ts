@@ -59,7 +59,7 @@ export const createLoad = async (req: Request, res: Response) => {
 };
 
 export const getMyLoads = async (req: Request, res: Response) => {
-  const userId = req.user?.uid;
+  const userId = req.user?.id;
 
   if (!userId) {
     return res.status(401).json({ error: 'Unauthorized' });
