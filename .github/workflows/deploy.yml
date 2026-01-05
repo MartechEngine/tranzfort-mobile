@@ -1,4 +1,4 @@
-name: Deploy to Hostinger and Supabase
+name: Deploy to Hostinger
 
 on:
   push:
@@ -17,53 +17,50 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20.10.0
+          node-version: 20
 
-      - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v1
-        with:
-          version: latest
-
-      - name: Sync Supabase Schema
-        run: supabase db push --db-url "${{ secrets.SUPABASE_DB_URL }}"
-        if: success()
-
-      - name: Deploy Supabase Functions
-        run: |
-          supabase functions deploy handle-expiry --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
-          supabase functions deploy send-notifications --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-
-      # 1. Build Landing Page (Root)
+      # ---------------------------------------------------------
+      # STEP 1: Build Landing Page (Only if you have a 'landing' folder)
+      # ---------------------------------------------------------
       - name: Install and Build Landing
         working-directory: ./landing
         run: |
           npm install
           npm run build
         env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          # We map the keys you saved (VITE_...) to what Next.js needs (NEXT_PUBLIC_...)
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
-      # 2. Build Admin App (/admin)
+      # ---------------------------------------------------------
+      # STEP 2: Build Admin App (Inside 'admin' folder)
+      # ---------------------------------------------------------
       - name: Install and Build Admin
         working-directory: ./admin
         run: |
           npm install
           npm run build
         env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
-      # 3. Prepare deployment directory
+      # ---------------------------------------------------------
+      # STEP 3: Merge them into one folder for Hostinger
+      # ---------------------------------------------------------
       - name: Prepare Deployment Directory
         run: |
           mkdir deploy-dist
+          
+          # Copy Landing page to the root of the site
           cp -r landing/out/* deploy-dist/
+          
+          # Copy Admin app to the /admin subfolder
           mkdir -p deploy-dist/admin
           cp -r admin/out/* deploy-dist/admin/
 
-      # 4. Upload to Hostinger (FTP)
+      # ---------------------------------------------------------
+      # STEP 4: Upload to Hostinger
+      # ---------------------------------------------------------
       - name: FTP Deploy
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
