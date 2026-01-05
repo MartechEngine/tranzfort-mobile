@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../core/network/api_client.dart';
 
 enum ChatStatus { initial, loading, success, error }
 
@@ -33,6 +32,7 @@ class ChatState {
 }
 
 class ChatNotifier extends StateNotifier<ChatState> {
+  final _supabase = Supabase.instance.client;
   RealtimeChannel? _messageSubscription;
 
   ChatNotifier() : super(ChatState());
@@ -40,8 +40,29 @@ class ChatNotifier extends StateNotifier<ChatState> {
   Future<void> fetchMyChats() async {
     state = state.copyWith(status: ChatStatus.loading);
     try {
-      final response = await apiClient.dio.get('/chats/my');
-      state = state.copyWith(status: ChatStatus.success, myChats: response.data);
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) throw Exception('Not logged in');
+
+      // Determine if user is supplier or trucker to filter chats
+      final userResponse = await _supabase
+          .from('users')
+          .select('role, supplier_profiles(id), trucker_profiles(id)')
+          .eq('id', userId)
+          .single();
+
+      final role = userResponse['role'];
+      var query = _supabase.from('chats').select('*, loads(*, supplier_profiles(*)), trucker_profiles(*)');
+
+      if (role == 'SUPPLIER') {
+        final supplierId = (userResponse['supplier_profiles'] as List).first['id'];
+        query = query.eq('loads.supplier_id', supplierId);
+      } else {
+        final truckerId = (userResponse['trucker_profiles'] as List).first['id'];
+        query = query.eq('trucker_id', truckerId);
+      }
+
+      final data = await query.order('created_at', {ascending: false});
+      state = state.copyWith(status: ChatStatus.success, myChats: data as List);
     } catch (e) {
       state = state.copyWith(status: ChatStatus.error, errorMessage: e.toString());
     }
@@ -50,10 +71,14 @@ class ChatNotifier extends StateNotifier<ChatState> {
   Future<void> fetchMessages(String chatId) async {
     state = state.copyWith(status: ChatStatus.loading);
     try {
-      final response = await apiClient.dio.get('/chats/$chatId/messages');
-      state = state.copyWith(status: ChatStatus.success, currentMessages: response.data);
+      final data = await _supabase
+          .from('chat_messages')
+          .select('*')
+          .eq('chat_id', chatId)
+          .order('created_at', {ascending: true});
+
+      state = state.copyWith(status: ChatStatus.success, currentMessages: data as List);
       
-      // Setup Realtime listener
       _setupRealtimeListener(chatId);
     } catch (e) {
       state = state.copyWith(status: ChatStatus.error, errorMessage: e.toString());
@@ -63,7 +88,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
   void _setupRealtimeListener(String chatId) {
     _messageSubscription?.unsubscribe();
     
-    _messageSubscription = Supabase.instance.client
+    _messageSubscription = _supabase
         .channel('public:chat_messages:chat_id=eq.$chatId')
         .onPostgresChanges(
           event: PostgresChangeEvent.insert,
@@ -86,11 +111,14 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
   Future<void> sendMessage(String chatId, String message) async {
     try {
-      await apiClient.dio.post('/chats/message', data: {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) throw Exception('Not logged in');
+
+      await _supabase.from('chat_messages').insert({
         'chat_id': chatId,
+        'sender_id': userId,
         'message': message,
       });
-      // No need to fetchMessages again, Realtime listener will catch the insert
     } catch (e) {
       state = state.copyWith(status: ChatStatus.error, errorMessage: e.toString());
     }
@@ -99,11 +127,42 @@ class ChatNotifier extends StateNotifier<ChatState> {
   Future<String?> initiateChat(String loadId) async {
     state = state.copyWith(status: ChatStatus.loading);
     try {
-      final response = await apiClient.dio.post('/chats/initiate', data: {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) throw Exception('Not logged in');
+
+      // 1. Get trucker profile
+      final truckerProfile = await _supabase
+          .from('trucker_profiles')
+          .select('id, verification_status')
+          .eq('user_id', userId)
+          .single();
+
+      if (truckerProfile['verification_status'] != 'VERIFIED') {
+        throw Exception('Only verified truckers can initiate chat');
+      }
+
+      // 2. Check for existing chat
+      final existingChat = await _supabase
+          .from('chats')
+          .select('id')
+          .eq('load_id', loadId)
+          .eq('trucker_id', truckerProfile['id'])
+          .maybeSingle();
+
+      if (existingChat != null) {
+        state = state.copyWith(status: ChatStatus.success);
+        return existingChat['id'];
+      }
+
+      // 3. Create new chat
+      final newChat = await _supabase.from('chats').insert({
         'load_id': loadId,
-      });
+        'trucker_id': truckerProfile['id'],
+        'status': 'ACTIVE'
+      }).select().single();
+
       state = state.copyWith(status: ChatStatus.success);
-      return response.data['id'];
+      return newChat['id'];
     } catch (e) {
       state = state.copyWith(status: ChatStatus.error, errorMessage: e.toString());
       return null;

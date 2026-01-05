@@ -7,8 +7,4 @@ class AppConfig {
     'SUPABASE_ANON_KEY',
     defaultValue: 'YOUR_SUPABASE_ANON_KEY',
   );
-  static const String apiBaseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'http://localhost:3000',
-  );
 }

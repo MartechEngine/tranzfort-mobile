@@ -2,27 +2,26 @@
 
 import { useEffect, useState } from 'react';
 import { VerificationRequest } from '@/types';
+import { getSupabaseClient } from '../../../supabaseClient';
 
 export default function VerificationsPage() {
   const [verifications, setVerifications] = useState<VerificationRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const adminToken = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? '';
-
   const fetchVerifications = async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch(`${apiBaseUrl}/admin/verifications`, {
-        headers: {
-          Authorization: `Bearer ${adminToken ?? ''}`,
-        },
-      });
-      if (!response.ok) throw new Error('Failed to fetch verifications');
-      const data = (await response.json()) as VerificationRequest[];
-      setVerifications(data);
+      const supabase = getSupabaseClient();
+      const { data, error: fetchError } = await supabase
+        .from('verifications')
+        .select('*, users(phone, role)')
+        .eq('status', 'PENDING')
+        .order('created_at', { ascending: false });
+
+      if (fetchError) throw fetchError;
+      setVerifications(data as any);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -32,30 +31,42 @@ export default function VerificationsPage() {
 
   useEffect(() => {
     fetchVerifications();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const approve = async (id: string) => {
-    await fetch(`${apiBaseUrl}/admin/verifications/${id}/approve`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${adminToken ?? ''}`,
-      },
-    });
-    await fetchVerifications();
+    try {
+      const supabase = getSupabaseClient();
+      const verification = verifications.find(v => v.id === id);
+      if (!verification) return;
+
+      const { error } = await supabase.rpc('approve_verification', {
+        p_user_id: verification.user_id
+      });
+
+      if (error) throw error;
+      await fetchVerifications();
+    } catch (err: any) {
+      alert(err.message);
+    }
   };
 
   const reject = async (id: string) => {
-    const notes = window.prompt('Reject notes (optional):') ?? '';
-    await fetch(`${apiBaseUrl}/admin/verifications/${id}/reject`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${adminToken ?? ''}`,
-      },
-      body: JSON.stringify({ notes }),
-    });
-    await fetchVerifications();
+    try {
+      const notes = window.prompt('Reject notes (optional):') ?? '';
+      const supabase = getSupabaseClient();
+      const verification = verifications.find(v => v.id === id);
+      if (!verification) return;
+
+      const { error } = await supabase.rpc('reject_verification', {
+        p_user_id: verification.user_id,
+        p_admin_notes: notes
+      });
+
+      if (error) throw error;
+      await fetchVerifications();
+    } catch (err: any) {
+      alert(err.message);
+    }
   };
 
   if (loading) return <div className="p-8 text-center">Loading verifications...</div>;

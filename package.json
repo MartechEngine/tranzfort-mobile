@@ -1,15 +1,16 @@
 {
   "name": "tranzfort-app",
   "version": "1.0.0",
-  "main": "index.js",
-  "directories": {
-    "doc": "docs"
-  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "supabase:login": "supabase login",
+    "supabase:init": "supabase init",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:deploy": "supabase functions deploy --project-ref $SUPABASE_PROJECT_ID",
+    "supabase:db:push": "supabase db push"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": ""
+  "description": "tranZfort - Serverless Mobile App with Supabase Backend"
 }

@@ -1,4 +1,4 @@
-name: Deploy to Hostinger
+name: Deploy to Hostinger and Supabase
 
 on:
   push:
@@ -8,7 +8,6 @@ on:
 jobs:
   deploy:
     name: Build and Deploy
-
     runs-on: ubuntu-latest
 
     steps:
@@ -20,6 +19,22 @@ jobs:
         with:
           node-version: 20.10.0
 
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Sync Supabase Schema
+        run: supabase db push --db-url "${{ secrets.SUPABASE_DB_URL }}"
+        if: success()
+
+      - name: Deploy Supabase Functions
+        run: |
+          supabase functions deploy handle-expiry --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+          supabase functions deploy send-notifications --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
       # 1. Build Landing Page (Root)
       - name: Install and Build Landing
         working-directory: ./landing
@@ -29,7 +44,6 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
 
       # 2. Build Admin App (/admin)
       - name: Install and Build Admin
@@ -40,7 +54,6 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
 
       # 3. Prepare deployment directory
       - name: Prepare Deployment Directory

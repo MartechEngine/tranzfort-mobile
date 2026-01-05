@@ -1,5 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/network/api_client.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 enum LoadStatus { initial, loading, success, error }
 
@@ -32,14 +32,31 @@ class LoadState {
 }
 
 class LoadNotifier extends StateNotifier<LoadState> {
+  final _supabase = Supabase.instance.client;
+
   LoadNotifier() : super(LoadState());
 
   Future<void> createLoad(Map<String, dynamic> loadData) async {
     state = state.copyWith(status: LoadStatus.loading);
     try {
-      await apiClient.dio.post('/loads', data: loadData);
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) throw Exception('Not logged in');
+
+      // Get supplier profile id
+      final supplierProfile = await _supabase
+          .from('supplier_profiles')
+          .select('id')
+          .eq('user_id', userId)
+          .single();
+
+      await _supabase.from('loads').insert({
+        'supplier_id': supplierProfile['id'],
+        ...loadData,
+        'status': 'ACTIVE',
+      });
+
       state = state.copyWith(status: LoadStatus.success);
-      await fetchMyLoads(); // Refresh the list
+      await fetchMyLoads();
     } catch (e) {
       state = state.copyWith(status: LoadStatus.error, errorMessage: e.toString());
     }
@@ -48,8 +65,22 @@ class LoadNotifier extends StateNotifier<LoadState> {
   Future<void> fetchMyLoads() async {
     state = state.copyWith(status: LoadStatus.loading);
     try {
-      final response = await apiClient.dio.get('/loads/my');
-      state = state.copyWith(status: LoadStatus.success, myLoads: response.data);
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) throw Exception('Not logged in');
+
+      final supplierProfile = await _supabase
+          .from('supplier_profiles')
+          .select('id')
+          .eq('user_id', userId)
+          .single();
+
+      final data = await _supabase
+          .from('loads')
+          .select('*, supplier_profiles(*)')
+          .eq('supplier_id', supplierProfile['id'])
+          .order('created_at', {ascending: false});
+
+      state = state.copyWith(status: LoadStatus.success, myLoads: data as List);
     } catch (e) {
       state = state.copyWith(status: LoadStatus.error, errorMessage: e.toString());
     }
@@ -58,8 +89,25 @@ class LoadNotifier extends StateNotifier<LoadState> {
   Future<void> searchLoads(Map<String, dynamic> filters) async {
     state = state.copyWith(status: LoadStatus.loading);
     try {
-      final response = await apiClient.dio.get('/loads', queryParameters: filters);
-      state = state.copyWith(status: LoadStatus.success, searchResults: response.data);
+      // If radius search is requested
+      if (filters.containsKey('lat') && filters.containsKey('lng') && filters.containsKey('radius')) {
+        final data = await _supabase.rpc('get_loads_by_radius', params: {
+          'p_lat': filters['lat'],
+          'p_lng': filters['lng'],
+          'p_radius_meters': filters['radius'] * 1000, // km to meters
+        });
+        state = state.copyWith(status: LoadStatus.success, searchResults: data as List);
+      } else {
+        // Simple search
+        var query = _supabase.from('loads').select('*, supplier_profiles(*)').eq('status', 'ACTIVE');
+        
+        if (filters.containsKey('material_type')) {
+          query = query.eq('material_type', filters['material_type']);
+        }
+        
+        final data = await query.order('created_at', {ascending: false});
+        state = state.copyWith(status: LoadStatus.success, searchResults: data as List);
+      }
     } catch (e) {
       state = state.copyWith(status: LoadStatus.error, errorMessage: e.toString());
     }

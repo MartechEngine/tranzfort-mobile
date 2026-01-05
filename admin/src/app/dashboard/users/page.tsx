@@ -2,57 +2,49 @@
 
 import { useState, useEffect } from 'react';
 import { User } from '@/types';
+import { getSupabaseClient } from '../../../supabaseClient';
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? '';
+
+  const fetchUsers = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const supabase = getSupabaseClient();
+      const { data, error: fetchError } = await supabase
+        .from('users')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (fetchError) throw fetchError;
+      setUsers(data as User[]);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'An unknown error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const response = await fetch(`${apiBaseUrl}/users`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-          }
-        });
-        if (!response.ok) throw new Error('Failed to fetch users');
-        const data = await response.json();
-        setUsers(data);
-      } catch (err: unknown) {
-        if (err instanceof Error) {
-          setError(err.message);
-        } else {
-          setError('An unknown error occurred');
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchUsers();
-  }, [apiBaseUrl]);
+  }, []);
 
   const handleUpdateRole = async (userId: string, newRole: string) => {
     try {
-      const response = await fetch(`${apiBaseUrl}/users/${userId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-        },
-        body: JSON.stringify({ role: newRole })
-      });
-      if (!response.ok) throw new Error('Failed to update user');
+      const supabase = getSupabaseClient();
+      const { error } = await supabase
+        .from('users')
+        .update({ role: newRole })
+        .eq('id', userId);
+
+      if (error) throw error;
       
       setUsers(users.map(u => u.id === userId ? { ...u, role: newRole as User['role'] } : u));
     } catch (err: unknown) {
-      if (err instanceof Error) {
-        alert(err.message);
-      } else {
-        alert('An unknown error occurred');
-      }
+      alert(err instanceof Error ? err.message : 'An unknown error occurred');
     }
   };
 

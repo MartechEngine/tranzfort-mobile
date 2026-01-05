@@ -1,5 +1,7 @@
--- Enable PostGIS extension
+-- Enable extensions
 CREATE EXTENSION IF NOT EXISTS postgis;
+CREATE EXTENSION IF NOT EXISTS pg_net;
+CREATE EXTENSION IF NOT EXISTS pg_cron;
 
 -- 1. Users Table
 CREATE TABLE IF NOT EXISTS public.users (
@@ -196,7 +198,80 @@ CREATE TABLE IF NOT EXISTS public.notifications (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Row Level Security (RLS) Policies
+-- 15. Admin RPC Functions
+
+-- Get Admin Stats
+CREATE OR REPLACE FUNCTION get_admin_stats()
+RETURNS JSON AS $$
+DECLARE
+    result JSON;
+BEGIN
+    SELECT json_build_object(
+        'pendingVerifications', (SELECT count(*) FROM verifications WHERE status = 'PENDING'),
+        'activeLoads', (SELECT count(*) FROM loads WHERE status = 'ACTIVE'),
+        'totalUsers', (SELECT count(*) FROM users)
+    ) INTO result;
+    RETURN result;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Approve Verification
+CREATE OR REPLACE FUNCTION approve_verification(p_user_id UUID, p_admin_notes TEXT DEFAULT NULL)
+RETURNS void AS $$
+DECLARE
+    v_role TEXT;
+BEGIN
+    -- 1. Update verification record
+    UPDATE verifications 
+    SET status = 'APPROVED', 
+        admin_notes = p_admin_notes,
+        updated_at = now()
+    WHERE user_id = p_user_id;
+
+    -- 2. Get user role
+    SELECT role INTO v_role FROM users WHERE id = p_user_id;
+
+    -- 3. Update profile status
+    IF v_role = 'SUPPLIER' THEN
+        UPDATE supplier_profiles SET verification_status = 'VERIFIED' WHERE user_id = p_user_id;
+    ELSIF v_role = 'TRUCKER' THEN
+        UPDATE trucker_profiles SET verification_status = 'VERIFIED' WHERE user_id = p_user_id;
+    END IF;
+
+    -- 4. Audit Log
+    INSERT INTO audit_logs (admin_id, action, target_type, target_id, new_value)
+    VALUES (auth.uid(), 'APPROVE_VERIFICATION', 'USER', p_user_id, json_build_object('notes', p_admin_notes));
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Reject Verification
+CREATE OR REPLACE FUNCTION reject_verification(p_user_id UUID, p_admin_notes TEXT DEFAULT NULL)
+RETURNS void AS $$
+DECLARE
+    v_role TEXT;
+BEGIN
+    -- 1. Update verification record
+    UPDATE verifications 
+    SET status = 'REJECTED', 
+        admin_notes = p_admin_notes,
+        updated_at = now()
+    WHERE user_id = p_user_id;
+
+    -- 2. Get user role
+    SELECT role INTO v_role FROM users WHERE id = p_user_id;
+
+    -- 3. Update profile status
+    IF v_role = 'SUPPLIER' THEN
+        UPDATE supplier_profiles SET verification_status = 'REJECTED' WHERE user_id = p_user_id;
+    ELSIF v_role = 'TRUCKER' THEN
+        UPDATE trucker_profiles SET verification_status = 'REJECTED' WHERE user_id = p_user_id;
+    END IF;
+
+    -- 4. Audit Log
+    INSERT INTO audit_logs (admin_id, action, target_type, target_id, new_value)
+    VALUES (auth.uid(), 'REJECT_VERIFICATION', 'USER', p_user_id, json_build_object('notes', p_admin_notes));
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Enable RLS on all tables
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
@@ -249,4 +324,43 @@ CREATE POLICY "Users can manage their own notifications" ON public.notifications
 
 -- 8. Admin policies
 CREATE POLICY "Admins have full access to everything" ON public.users FOR ALL USING (EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'ADMIN'));
--- (Simplified for brevity, usually you'd repeat for each table or use a helper function)
+-- 16. Scheduled Tasks (pg_cron)
+-- Trigger handle-expiry every day at midnight
+SELECT cron.schedule(
+    'handle-expiry-task',
+    '0 0 * * *',
+    $$
+    SELECT net.http_post(
+        url := (SELECT value FROM settings WHERE key = 'SUPABASE_URL') || '/functions/v1/handle-expiry',
+        headers := jsonb_build_object(
+            'Content-Type', 'application/json',
+            'Authorization', 'Bearer ' || (SELECT value FROM settings WHERE key = 'SUPABASE_SERVICE_ROLE_KEY')
+        )
+    );
+    $$
+);
+
+-- Trigger send-notifications every minute
+SELECT cron.schedule(
+    'send-notifications-task',
+    '* * * * *',
+    $$
+    SELECT net.http_post(
+        url := (SELECT value FROM settings WHERE key = 'SUPABASE_URL') || '/functions/v1/send-notifications',
+        headers := jsonb_build_object(
+            'Content-Type', 'application/json',
+            'Authorization', 'Bearer ' || (SELECT value FROM settings WHERE key = 'SUPABASE_SERVICE_ROLE_KEY')
+        )
+    );
+    $$
+);
+
+-- 17. Settings table for keys (used by cron)
+CREATE TABLE IF NOT EXISTS public.settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Note: You must manually insert SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY into the settings table
+-- or use environment variables if supported by your pg_net setup.

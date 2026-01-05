@@ -2,27 +2,25 @@
 
 import { useEffect, useState } from 'react';
 import { Load } from '@/types';
+import { getSupabaseClient } from '../../../supabaseClient';
 
 export default function LoadsPage() {
   const [loads, setLoads] = useState<Load[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const adminToken = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? '';
-
   const fetchLoads = async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch(`${apiBaseUrl}/admin/loads`, {
-        headers: {
-          Authorization: `Bearer ${adminToken ?? ''}`,
-        },
-      });
-      if (!response.ok) throw new Error('Failed to fetch loads');
-      const data = (await response.json()) as Load[];
-      setLoads(data);
+      const supabase = getSupabaseClient();
+      const { data, error: fetchError } = await supabase
+        .from('loads')
+        .select('*, supplier_profiles(company_name, owner_name)')
+        .order('created_at', { ascending: false });
+
+      if (fetchError) throw fetchError;
+      setLoads(data as any);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -32,19 +30,24 @@ export default function LoadsPage() {
 
   useEffect(() => {
     fetchLoads();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const deleteLoad = async (id: string) => {
     const ok = window.confirm('Delete this load?');
     if (!ok) return;
-    await fetch(`${apiBaseUrl}/admin/loads/${id}`, {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${adminToken ?? ''}`,
-      },
-    });
-    await fetchLoads();
+    
+    try {
+      const supabase = getSupabaseClient();
+      const { error } = await supabase
+        .from('loads')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      await fetchLoads();
+    } catch (err: any) {
+      alert(err.message);
+    }
   };
 
   if (loading) return <div className="p-8 text-center">Loading loads...</div>;

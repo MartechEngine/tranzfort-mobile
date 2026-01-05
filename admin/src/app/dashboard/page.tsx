@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { getSupabaseClient } from '../../supabaseClient';
 
 interface DashboardStats {
   pendingVerifications: number;
@@ -17,17 +18,13 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? '';
     const fetchStats = async () => {
       try {
-        const response = await fetch(`${apiBaseUrl}/admin/stats`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-          }
-        });
-        if (!response.ok) throw new Error('Failed to fetch stats');
-        const data = await response.json();
-        setStats(data);
+        const supabase = getSupabaseClient();
+        const { data, error } = await supabase.rpc('get_admin_stats');
+        
+        if (error) throw error;
+        if (data) setStats(data);
       } catch (err) {
         console.error('Error fetching dashboard stats:', err);
       } finally {
