@@ -364,3 +364,11 @@ CREATE TABLE IF NOT EXISTS public.settings (
 
 -- Note: You must manually insert SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY into the settings table
 -- or use environment variables if supported by your pg_net setup.
+
+-- Initial seed settings
+INSERT INTO public.settings (key, value) VALUES 
+('site_name', 'Tranzfort Logistics'),
+('maintenance_mode', 'false'),
+('support_email', 'support@tranzfort.com'),
+('max_upload_size_mb', '10')
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
